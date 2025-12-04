@@ -3,26 +3,36 @@ import 'package:http/http.dart' as http;
 import '../models/product.dart';
 
 class ProductService {
-  static const String baseUrl = 'http://localhost/midterm_project/api';
+  // Use 127.0.0.1 for Flutter Web. If you later run on Android emulator use 10.0.2.2,
+  // or use your LAN IP (http://192.168.x.x) for real devices.
+  static const String baseUrl = 'http://127.0.0.1/midterm_project/api';
 
   static Future<List<Product>> getProducts() async {
     try {
       final response = await http.get(Uri.parse('$baseUrl/get_products.php'));
 
+      // Debug: print the body so you can see the API response in console
+      // (remove in production).
+      print('getProducts response: ${response.statusCode} -> ${response.body}');
+
       if (response.statusCode == 200) {
         final Map<String, dynamic> data = json.decode(response.body);
 
         if (data['status'] == 'success') {
-          List<Product> products = [];
-          for (var item in data['data']) {
-            products.add(Product.fromJson(item));
+          final List<Product> products = [];
+          final items = data['data'] as List<dynamic>? ?? [];
+
+          for (var item in items) {
+            products.add(Product.fromJson(Map<String, dynamic>.from(item)));
           }
+
           return products;
         }
       }
+
       return [];
     } catch (e) {
-      print('Error: $e');
+      print('ProductService.getProducts error: $e');
       return [];
     }
   }

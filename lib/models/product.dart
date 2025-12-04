@@ -7,6 +7,7 @@ class Product {
   double unitPrice;
   String productImage;
   String status;
+  String? imageUrl;
 
   Product({
     this.productId,
@@ -17,26 +18,27 @@ class Product {
     required this.unitPrice,
     required this.productImage,
     required this.status,
+    this.imageUrl,
   });
 
   factory Product.fromJson(Map<String, dynamic> json) {
     return Product(
-      productId: json['product_id'] ?? 0,
+      productId: json['product_id'] == null
+          ? null
+          : int.tryParse(json['product_id'].toString()),
       productName: json['product_name'] ?? '',
       category: json['category'] ?? '',
       description: json['description'] ?? '',
-      qty: json['qty'] is int ? json['qty'] : int.tryParse(json['qty'].toString()) ?? 0,
-      unitPrice: json['unit_price'] is double
-          ? json['unit_price']
-          : double.tryParse(json['unit_price'].toString()) ?? 0.0,
+      qty: int.tryParse(json['qty'].toString()) ?? 0,
+      unitPrice: double.tryParse(json['unit_price'].toString()) ?? 0.0,
       productImage: json['product_image'] ?? '',
-      status: json['status'] ?? 'active',
+      status: json['status'] ?? '',
+      imageUrl: json['image_url'], // <--- correct URL from API
     );
   }
 
   Map<String, dynamic> toJson() {
-    return {
-      if (productId != null && productId! > 0) 'product_id': productId,
+    final data = <String, dynamic>{
       'product_name': productName,
       'category': category,
       'description': description,
@@ -45,17 +47,15 @@ class Product {
       'product_image': productImage,
       'status': status,
     };
-  }
 
-  // Add missing getters
-  String? get imageUrl {
-    if (productImage.isNotEmpty) {
-      return 'http://localhost/midterm_project/uploads/$productImage';
+    // Only add product_id if it exists
+    if (productId != null) {
+      data['product_id'] = productId!;
     }
-    return null;
+
+    return data;
   }
 
-  String get formattedPrice => '\$${unitPrice.toStringAsFixed(2)}';
-
-  bool get isActive => status == 'active';
+  // <--- restored getter so your UI works
+  String get formattedPrice => "\$${unitPrice.toStringAsFixed(2)}";
 }

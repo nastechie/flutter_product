@@ -27,6 +27,10 @@ class _ProductListScreenState extends State<ProductListScreen> {
 
     try {
       final products = await ProductService.getProducts();
+
+      // Debug: log how many products fetched
+      print('Loaded ${products.length} products');
+
       setState(() {
         _products = products;
         _isLoading = false;
@@ -75,6 +79,10 @@ class _ProductListScreenState extends State<ProductListScreen> {
                 width: 50,
                 height: 50,
                 fit: BoxFit.cover,
+                errorBuilder: (c, e, s) {
+                  // show icon if image fails to load
+                  return const Icon(Icons.broken_image, color: Colors.white);
+                },
               )
                   : const Icon(Icons.inventory, color: Colors.white),
               title: Text(
@@ -109,7 +117,7 @@ class _ProductListScreenState extends State<ProductListScreen> {
                   IconButton(
                     icon: const Icon(Icons.delete, color: Colors.red),
                     onPressed: () {
-                      _deleteProduct(product.productId!);
+                      _deleteProduct(product.productId ?? 0);
                     },
                   ),
                 ],
@@ -148,7 +156,7 @@ class _ProductListScreenState extends State<ProductListScreen> {
         EasyLoading.showSuccess('Deleted!');
         _loadProducts();
       } else {
-        EasyLoading.showError(result['message']);
+        EasyLoading.showError(result['message'] ?? 'Delete failed');
       }
     }
   }

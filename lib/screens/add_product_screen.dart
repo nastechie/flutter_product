@@ -1,7 +1,9 @@
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:flutter_easyloading/flutter_easyloading.dart';
 import '../models/product.dart';
-import '../services/product_service.dart';
+import '../services/api_service.dart';
 
 class AddProductScreen extends StatefulWidget {
   const AddProductScreen({super.key});
@@ -12,158 +14,155 @@ class AddProductScreen extends StatefulWidget {
 
 class _AddProductScreenState extends State<AddProductScreen> {
   final _formKey = GlobalKey<FormState>();
-  final _nameController = TextEditingController();
-  final _categoryController = TextEditingController();
-  final _descriptionController = TextEditingController();
-  final _qtyController = TextEditingController();
-  final _priceController = TextEditingController();
 
-  bool _isLoading = false;
+  final TextEditingController nameController = TextEditingController();
+  final TextEditingController categoryController = TextEditingController();
+  final TextEditingController descriptionController = TextEditingController();
+  final TextEditingController qtyController = TextEditingController();
+  final TextEditingController priceController = TextEditingController();
 
-  Future<void> _submitForm() async {
-    if (!_formKey.currentState!.validate()) return;
+  Uint8List? _imageBytes;
+  String? _imageName;
 
-    setState(() {
-      _isLoading = true;
-    });
+  final ImagePicker _picker = ImagePicker();
 
-    try {
-      final product = Product(
-        productName: _nameController.text,
-        category: _categoryController.text,
-        description: _descriptionController.text,
-        qty: int.parse(_qtyController.text),
-        unitPrice: double.parse(_priceController.text),
-        productImage: '', // No image for now
-        status: 'active',
-      );
+  Future<void> _pickImage() async {
+    final XFile? picked = await _picker.pickImage(source: ImageSource.gallery);
 
-      final result = await ProductService.insertProduct(product);
-
-      if (result['status'] == 'success') {
-        EasyLoading.showSuccess('Product added!');
-        Navigator.pop(context);
-      } else {
-        EasyLoading.showError(result['message']);
-      }
-    } catch (e) {
-      EasyLoading.showError('Error: $e');
-    } finally {
+    if (picked != null) {
+      final bytes = await picked.readAsBytes();
       setState(() {
-        _isLoading = false;
+        _imageBytes = bytes;
+        _imageName = picked.name;
       });
     }
   }
 
-  @override
-  void dispose() {
-    _nameController.dispose();
-    _categoryController.dispose();
-    _descriptionController.dispose();
-    _qtyController.dispose();
-    _priceController.dispose();
-    super.dispose();
+  Future<void> _saveProduct() async {
+    if (!_formKey.currentState!.validate()) return;
+
+    if (_imageBytes == null) {
+      EasyLoading.showError("Please select an image");
+      return;
+    }
+
+    EasyLoading.show(status: "Saving...");
+
+    // Step 1: Upload image
+    final uploadResponse = await ApiService.multipartRequest(
+      endpoint: "http://127.0.0.1/midterm_project/api/upload_image.php",
+      fields: {"folder": "uploads"},
+      fileField: "product_image",
+      fileBytes: _imageBytes!,
+      fileName: _imageName!,
+    );
+
+    if (uploadResponse["status"] != "success") {
+      EasyLoading.showError("Image upload failed!");
+      return;
+    }
+
+    String uploadedFileName = uploadResponse["file_name"];
+
+    // Step 2: Insert product
+    Product product = Product(
+      productName: nameController.text.trim(),
+      category: categoryController.text.trim(),
+      description: descriptionController.text.trim(),
+      qty: int.tryParse(qtyController.text) ?? 0,
+      unitPrice: double.tryParse(priceController.text) ?? 0,
+      productImage: uploadedFileName,
+      status: "active",
+    );
+
+    final insertResponse = await ApiService.postRequest(
+      endpoint: "http://127.0.0.1/midterm_project/api/insert_product.php",
+      data: product.toJson(),
+    );
+
+    EasyLoading.dismiss();
+
+    if (insertResponse["status"] == "success") {
+      EasyLoading.showSuccess("Product added!");
+      Navigator.pop(context);
+    } else {
+      EasyLoading.showError(insertResponse["message"]);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Add Product'),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () => Navigator.pop(context),
-        ),
-      ),
-      body: Padding(
-        padding: const EdgeInsets.all(16.0),
+      appBar: AppBar(title: const Text("Add Product")),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(16),
         child: Form(
           key: _formKey,
-          child: ListView(
+          child: Column(
             children: [
-              TextFormField(
-                controller: _nameController,
-                decoration: const InputDecoration(
-                  labelText: 'Product Name',
-                  border: OutlineInputBorder(),
+              // ---------- IMAGE PICKER ----------
+              GestureDetector(
+                onTap: _pickImage,
+                child: Container(
+                  height: 160,
+                  width: double.infinity,
+                  decoration: BoxDecoration(
+                    color: Colors.grey[900],
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.white24),
+                  ),
+                  child: _imageBytes == null
+                      ? const Center(
+                    child: Text(
+                      "Tap to select image",
+                      style: TextStyle(color: Colors.white70),
+                    ),
+                  )
+                      : ClipRRect(
+                    borderRadius: BorderRadius.circular(12),
+                    child: Image.memory(
+                      _imageBytes!,
+                      fit: BoxFit.cover,
+                    ),
+                  ),
                 ),
-                validator: (value) {
-                  if (value == null || value.isEmpty) {
-                    return 'Required';
-                  }
-                  return null;
-                },
               ),
-              const SizedBox(height: 16),
+
+              const SizedBox(height: 20),
+
               TextFormField(
-                controller: _categoryController,
-                decoration: const InputDecoration(
-                  labelText: 'Category',
-                  border: OutlineInputBorder(),
-                ),
-                validator: (value) {
-                  if (value == null || value.isEmpty) {
-                    return 'Required';
-                  }
-                  return null;
-                },
+                controller: nameController,
+                decoration: const InputDecoration(labelText: "Product Name"),
+                validator: (v) => v!.isEmpty ? "Enter name" : null,
               ),
-              const SizedBox(height: 16),
+
               TextFormField(
-                controller: _qtyController,
+                controller: categoryController,
+                decoration: const InputDecoration(labelText: "Category"),
+              ),
+
+              TextFormField(
+                controller: descriptionController,
+                decoration: const InputDecoration(labelText: "Description"),
+              ),
+
+              TextFormField(
+                controller: qtyController,
+                decoration: const InputDecoration(labelText: "Quantity"),
                 keyboardType: TextInputType.number,
-                decoration: const InputDecoration(
-                  labelText: 'Quantity',
-                  border: OutlineInputBorder(),
-                ),
-                validator: (value) {
-                  if (value == null || value.isEmpty) {
-                    return 'Required';
-                  }
-                  if (int.tryParse(value) == null) {
-                    return 'Enter valid number';
-                  }
-                  return null;
-                },
               ),
-              const SizedBox(height: 16),
+
               TextFormField(
-                controller: _priceController,
-                keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                decoration: const InputDecoration(
-                  labelText: 'Price',
-                  border: OutlineInputBorder(),
-                ),
-                validator: (value) {
-                  if (value == null || value.isEmpty) {
-                    return 'Required';
-                  }
-                  if (double.tryParse(value) == null) {
-                    return 'Enter valid price';
-                  }
-                  return null;
-                },
+                controller: priceController,
+                decoration: const InputDecoration(labelText: "Price"),
+                keyboardType: TextInputType.number,
               ),
-              const SizedBox(height: 16),
-              TextFormField(
-                controller: _descriptionController,
-                maxLines: 3,
-                decoration: const InputDecoration(
-                  labelText: 'Description',
-                  border: OutlineInputBorder(),
-                ),
-              ),
-              const SizedBox(height: 32),
+
+              const SizedBox(height: 20),
+
               ElevatedButton(
-                onPressed: _isLoading ? null : _submitForm,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF9FEF00),
-                  foregroundColor: Colors.black,
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                ),
-                child: _isLoading
-                    ? const CircularProgressIndicator()
-                    : const Text('Add Product'),
+                onPressed: _saveProduct,
+                child: const Text("Save Product"),
               ),
             ],
           ),
